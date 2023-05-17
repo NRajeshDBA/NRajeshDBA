@@ -1,5 +1,29 @@
+/*
+Script for creating automated restore scripts based on Ola Hallengren's Maintenance Solution.   
+Source: https://ola.hallengren.com  
+  
+Create RestoreCommand s proc in location of Maintenance Solution procedures   
+and CommandLog table along with creating job steps.  
+  
+At least one full backup for all databases should be logged to CommandLog table (i.e., executed through Maintenance Solution  
+created FULL backup job) for generated restore scripts to be valid.   
+Restore scripts are generated based on CommandLog table, not msdb backup history.  
+  
+Restore script is created using ouput file. Each backup job creates a date / time stamped restore script file in separate step.  
+Add a job to manage file retention if desired (I use a modified version of Ola's Output File Cleanup job).  
+If possible, perform a tail log backup and add to end of restore script   
+in order to avoid data loss (also remove any replace options for full backups).  
+  
+Make sure sql agent has read / write to the directory that you want the restore script created.  
+  
+Script will read backup file location from @Directory value used in respective DatabaseBackup job (NULL is supported).   
+Set @LogToTable = 'Y' for all backup jobs! (This is the defaut).    
+  
+Created by Jared Zagelbaum, 4/13/2015, https://jaredzagelbaum.wordpress.com/  
+For intro / tutorial see: https://jaredzagelbaum.wordpress.com/2015/04/16/automated-restore-script-output-for-ola-hallengrens-maintenance-solution/  
 
-/* This script is modified version of the one available at https://jaredzagelbaum.wordpress.com/2015/04/16/automated-restore-script-output-for-ola-hallengrens-maintenance-solution/comment-page-1/?unapproved=448&moderation-hash=cec0588c2318a1a796618cfe741ce978#comment-448
+
+This script is modified version of the one available at https://jaredzagelbaum.wordpress.com/2015/04/16/automated-restore-script-output-for-ola-hallengrens-maintenance-solution/
 Thanks to JARED ZAGELBAUM
 This script will give a TSQL Restore commands as output based on data in CommandLog Table of olahallengren script :  https://github.com/olahallengren/sql-server-maintenance-solution
 Date: <16-0-2023>
