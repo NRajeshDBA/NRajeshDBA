@@ -6,6 +6,8 @@ Date: <16-0-2023>
 SP is modified by Rajesh Nalubolu in include restoration info from URL with CREDENTIAL and Split file
 
 */
+CREATE PROCEDURE [dbo].[RestoreCommand] AS      
+SET NOCOUNT ON  
 
 Declare @DatabaseName sysname
 Declare @DatabaseNamePartition sysname = 'N/A'
