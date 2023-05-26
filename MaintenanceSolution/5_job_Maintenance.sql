@@ -114,7 +114,7 @@ SELECT @sqlmajorver = CONVERT(int, (@@microsoftversion / 0x1000000) & 0xff);
 SELECT @Message = '** Start: ' + CONVERT(VARCHAR, GETDATE())
 RAISERROR(@Message, 0, 42) WITH NOWAIT;
 
-SET @sqlcmd_AO = 'SELECT sd.database_id, sd.name, SUM((size * 8) / 1024) AS rows_size_MB, 0 
+SET @sqlcmd_AO = 'SELECT sd.database_id, sd.name, SUM((cast(size as bigint) * 8) / 1024) AS rows_size_MB, 0 
 FROM sys.databases sd (NOLOCK)
 INNER JOIN sys.master_files smf (NOLOCK) ON sd.database_id = smf.database_id
 WHERE sd.is_read_only = 0 AND sd.state = 0 AND sd.database_id <> 2 AND smf.[type] = 0';
@@ -627,7 +627,9 @@ ALTER DATABASE [' + @dbname + '] SET MULTI_USER WITH ROLLBACK IMMEDIATE;'
 
 		IF @VLDBMode = 0 -- Now do table checks on todays bucket
 		BEGIN
-			WHILE (SELECT COUNT(*) FROM tblDbBuckets WHERE [database_id] = @dbid AND isdone = 0 AND BucketId = @TodayBucket) > 0
+			WHILE (SELECT COUNT(*) FROM tblDbBuckets WHERE [database_id] = @dbid AND isdone = 0 AND BucketId = @TodayBucket
+                               -- Confirm the table still exists
+                               AND OBJECT_ID(N'[' + DB_NAME(database_id) + '].[' + [schema] + '].[' + [name] + ']') IS NOT NULL) > 0
 			BEGIN
 				SELECT TOP 1 @name = [name], @schema = [schema], @used_page_count = used_page_count
 				FROM tblDbBuckets
@@ -940,8 +942,15 @@ BEGIN
 	CREATE TABLE #tmpdbs (id int IDENTITY(1,1), [dbname] sysname, isdone bit)
 
 	INSERT INTO #tmpdbs ([dbname], isdone)
-	SELECT QUOTENAME(d.name), 0 FROM sys.databases d INNER JOIN sys.master_files smf ON d.database_id = smf.database_id
-	WHERE d.is_read_only = 0 AND d.state = 0 AND d.database_id <> 2 AND smf.type = 0 AND (smf.size * 8)/1024 < 4096;
+	(SELECT DISTINCT QUOTENAME(d.name), 0 FROM sys.databases d 
+	INNER JOIN sys.master_files smf ON d.database_id = smf.database_id
+	JOIN sys.dm_hadr_database_replica_states hadrdrs ON d.database_id = hadrdrs.database_id
+	WHERE d.is_read_only = 0 AND d.state = 0 AND d.database_id <> 2 AND smf.type = 0 AND (smf.size * 8)/1024 < 4096 AND hadrdrs.is_primary_replica = 1)
+	UNION
+	(SELECT DISTINCT QUOTENAME(d.name), 0 FROM sys.databases d 
+	INNER JOIN sys.master_files smf ON d.database_id = smf.database_id
+	LEFT JOIN sys.dm_hadr_database_replica_states hadrdrs ON d.database_id = hadrdrs.database_id
+	WHERE d.is_read_only = 0 AND d.state = 0 AND d.database_id <> 2 AND smf.type = 0 AND (smf.size * 8)/1024 < 4096 AND hadrdrs.database_id IS NULL);
 
 	WHILE (SELECT COUNT([dbname]) FROM #tmpdbs WHERE isdone = 0) > 0
 	BEGIN
@@ -1001,7 +1010,9 @@ BEGIN
 	CREATE TABLE #tmpdbs (id int IDENTITY(1,1), [dbname] sysname, isdone bit)
 
 	INSERT INTO #tmpdbs ([dbname], isdone)
-	SELECT QUOTENAME(name), 0 FROM sys.databases WHERE is_read_only = 0 AND state = 0 AND database_id > 4 AND is_distributor = 0;
+	(SELECT QUOTENAME(name), 0 FROM sys.databases d JOIN sys.dm_hadr_database_replica_states hadrdrs ON d.database_id = hadrdrs.database_id WHERE is_read_only = 0 AND state = 0 AND d.database_id > 4 AND is_distributor = 0 AND hadrdrs.is_primary_replica = 1)
+	UNION
+	(SELECT QUOTENAME(name), 0 FROM sys.databases d LEFT JOIN sys.dm_hadr_database_replica_states hadrdrs ON d.database_id = hadrdrs.database_id WHERE is_read_only = 0 AND state = 0 AND d.database_id > 4 AND is_distributor = 0 AND hadrdrs.database_id IS NULL);
 
 	WHILE (SELECT COUNT([dbname]) FROM #tmpdbs WHERE isdone = 0) > 0
 	BEGIN
